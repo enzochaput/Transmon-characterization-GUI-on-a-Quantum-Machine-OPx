@@ -4,9 +4,7 @@ PyQt6 interface that runs a superconducting-qubit characterization workflow on a
 and a calibration cascade.
 
 
-<img width="1468" height="926" alt="Capture d’écran 2026-10-01 à 15 55 23" src="https://github.com/user-attachments/assets/2180fd3e-e56f-4eea-a275-7b0cc7a06a38" />
 
-```bash
 pip install PyQt6 numpy scipy matplotlib qm-qua qualang-tools labmate   # scipy, labmate optional
 python main.py
 ```
