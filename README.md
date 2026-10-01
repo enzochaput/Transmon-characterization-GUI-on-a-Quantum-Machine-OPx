@@ -1,3 +1,4 @@
+
 # Qubit characterization GUI (OPX + Octave)
 
 PyQt6 interface that runs a superconducting-qubit characterization workflow on a Quantum Machines OPX + Octave, with automatic extraction of the results
@@ -5,77 +6,84 @@ and a calibration cascade.
 
 
 
-pip install PyQt6 numpy scipy matplotlib qm-qua qualang-tools labmate   # scipy, labmate optional
-python main.py
-```
+<img width="1468" height="926" alt="Capture d’écran 2026-10-01 à 15 55 23" src="https://github.com/user-attachments/assets/eb4b2ce2-6242-435b-ae1e-067ab6d26385" />
 
-## First start
 
-1. **🔌 Connection** (top bar): QOP host/IP, cluster name (QOP ≥ 2.2) or port (older QOP),
-   Octave name/IP/port and the folder of `calibration_db.json`. Defaults come from
-   `configuration.py`; the settings are saved in `~/.qubit_gui/connection.json`.
-   **Test connection** opens a `QuantumMachinesManager` and shows the server versions.
-   Without a test, the first measurement connects automatically.
-2. Enter the user and the data folder, then **Set session** (saving via `labmate`).
-3. Pick an experiment, set the parameters and **Run**.
+## Getting started
 
-## What happens when you press Run
+Before the first measurement, open the Connection window (button in the top bar) and
+enter the address of the QOP server, the cluster name (or the port on QOP versions older
+than 2.2), and the Octave address. The default values are the ones from
+`configuration.py`, and whatever you enter is saved in `~/.qubit_gui/connection.json`.
+"Test connection" checks that the server answers; if you skip it, the first measurement
+connects on its own.
 
-1. The parameters are checked against the hardware limits before anything is sent
-   (pulse amplitudes and prefactor × amplitude < 0.5 V, prefactors in [-2, 2),
-   IF within ±400 MHz, lengths multiple of 4 ns and ≥ 16 ns, ToF ≥ 24 ns…).
-2. The QUA configuration is **built from the global parameters + the form**
-   (`qm_config.py`, same structure as `configuration.py`), a Quantum Machine is opened
-   with it and the QUA program of the experiment is executed (`qua_programs.py`).
-3. Results are fetched live (running averages + progress); **Stop** halts the job.
-4. At the end the data are fitted automatically (red curve, values ± 1σ, quality flag);
-   the yellow buttons write the extracted values to the global parameters.
-5. The data, every parameter, the extracted values and the full QUA configuration used
-   (`qua_config_json`) are saved in the HDF5 file.
+Then fill in your name and the data folder, click "Set session", pick an experiment,
+adjust the parameters and run it.
 
-Only one acquisition runs at a time.
+## What happens during a run
 
-## Programs
+Before anything is sent to the OPX, the parameters are checked against the hardware
+limits: amplitudes below 0.5 V (including amplitude × prefactor), prefactors in [-2, 2),
+IFs within ±400 MHz, pulse lengths that are multiples of 4 ns and at least 16 ns, and a
+time of flight of at least 24 ns. If something is off, you get a message and nothing
+runs.
 
-The QUA programs follow the standard qua-libs scripts (single fixed-frequency transmon,
-Octave): averaging loop outermost, `stream_processing` averages, live fetching.
-Spectroscopies return |IQ| (V), qubit-state measurements the I quadrature demodulated
-with the rotated weights (V), Time of flight the raw ADC traces (acquired with
-`time_of_flight = 24 ns`, so the time axis is the absolute delay).
+The QUA configuration is rebuilt for every run from the global parameters and the
+values in the form (see `qm_config.py`, which follows the structure of
+`configuration.py`). A Quantum Machine is opened with this configuration and the
+program of the experiment is executed. Results are fetched while the program runs, so
+the plot updates as averages accumulate, and the Stop button halts the job.
+
+When the run finishes, the data are fitted automatically. The extracted values come
+with their uncertainty and can be written back to the global parameters with the yellow
+buttons. The HDF5 file contains the raw data, all the parameters, the extracted values
+and the exact QUA configuration that was used (`qua_config_json`).
+
+Only one measurement can run at a time.
+
+## QUA programs
+
+The programs are based on the qua-libs examples for a single fixed-frequency transmon
+with an Octave. The averaging loop is the outermost loop, averaging is done in the
+stream processing, and results are fetched live. Spectroscopy measurements return |IQ|,
+measurements of the qubit state return the I quadrature with the rotated integration
+weights, and the time-of-flight measurement returns the raw ADC traces. It is run with
+`time_of_flight = 24 ns`, so the time axis gives the absolute delay.
 
 | Experiment | Sequence |
 |---|---|
-| Time of flight | `reset_phase` + `measure` with ADC stream |
-| Resonator 1-tone / vs power | `update_frequency(resonator)` (+ `readout*amp(a)`) + measure |
-| Qubit 2-tone / QM variant / vs power | `update_frequency(qubit)`, `saturation` (×amp) , measure |
-| Rabi chevrons | `update_frequency` + `x180*amp(a)` or `x180` with `duration=t` |
-| Time / Power Rabi | `x180` with `duration=t` / `x180*amp(a)` |
-| T1 (+ histogram) | `x180` – wait τ – measure (histogram: repeated runs, one fit each) |
-| Ramsey chevron | `update_frequency`, `x90` – τ – `x90` |
-| Ramsey virtual Z | `x90` – τ – `frame_rotation_2pi(detuning·τ)` – `x90` |
+| Time of flight | `reset_phase`, then `measure` with an ADC stream |
+| Resonator spectroscopy, vs power | sweep of the resonator frequency (and of the readout amplitude) |
+| Qubit spectroscopy, QM variant, vs power | sweep of the qubit frequency with a saturation pulse (and its amplitude) |
+| Rabi chevrons | frequency sweep with `x180` scaled in amplitude or stretched in duration |
+| Time Rabi / Power Rabi | `x180` with a variable duration / a variable amplitude |
+| T1, T1 histogram | `x180`, wait τ, measure (the histogram repeats the run and fits each one) |
+| Ramsey chevron | frequency sweep, `x90` – τ – `x90` |
+| Ramsey (virtual Z) | `x90` – τ – frame rotation by detuning·τ – `x90` |
 | Hahn echo | `x90` – τ – `x180` – τ – `-x90` |
-| IQ blobs | single shots in g, then after `x180` |
-| Readout frequency | per frequency: measure g, `x180`, measure e |
-| Mixer calibration | `qm.calibrate_element()` for resonator and qubit |
+| IQ blobs | single shots with the qubit in g, then after an `x180` |
+| Readout frequency | for each frequency, one measurement in g and one in e |
+| Mixer calibration | `calibrate_element()` on the resonator and the qubit |
 
-## Files
+## Code layout
 
-| File | Role |
-|---|---|
-| `connection.py`, `connection_dialog.py` | QM connection settings, QuantumMachinesManager |
-| `qm_config.py` | QUA configuration built from the GUI parameters |
-| `qua_programs.py` | QUA program of every experiment + live fetching |
-| `backend.py` | `QuaBackend`: check → open QM → run → frames |
-| `experiments.py` | experiment registry and parameter schemas |
-| `analysis.py`, `fitting.py` | automatic extraction |
-| `param_store.py`, `params_dialog.py` | global parameters |
-| `main_window.py`, `experiment_panel.py`, `glossary_panel.py`, `mpl_canvas.py` | GUI |
-| `session.py` | labmate saving |
-| `tests/` | offline checks only (never used by the application) |
+- `connection.py`, `connection_dialog.py`: connection settings and the QuantumMachinesManager
+- `qm_config.py`: builds the QUA configuration from the GUI parameters
+- `qua_programs.py`: the QUA program of each experiment and the live fetching
+- `backend.py`: checks the parameters, opens the Quantum Machine and runs the program
+- `experiments.py`: list of experiments and their parameters
+- `analysis.py`, `fitting.py`: fits and extraction of the results
+- `param_store.py`, `params_dialog.py`: global parameters
+- `main_window.py`, `experiment_panel.py`, `glossary_panel.py`, `mpl_canvas.py`: interface
+- `session.py`: saving with labmate
 
-`tests/test_programs.py` builds and validates the config + program of every experiment
-with the QM SDK (no hardware). `tests/test_extraction.py` checks the fits on synthetic
-data with known values.
-
+The `tests/` folder is not used by the application. `test_programs.py` builds the
+configuration and the program of every experiment and validates them with the QM SDK,
+without hardware. `test_extraction.py` checks the fits on synthetic data whose
+parameters are known.
 If you change the structure of `configuration.py` (elements, ports, pulses), mirror it in
 `qm_config.py`.
+<img width="1470" height="923" alt="Capture d’écran 2026-10-01 à 15 55 56" src="https://github.com/user-attachments/assets/7bfb311c-03b4-458c-b46e-26dce3a547cf" />
+
+
